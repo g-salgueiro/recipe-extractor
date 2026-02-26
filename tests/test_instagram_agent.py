@@ -1,0 +1,49 @@
+# tests/test_instagram_agent.py
+import pytest
+from unittest.mock import patch, MagicMock
+
+from src.agents.instagram import InstagramAgent
+from src.models.recipe import Ingredient, RecipeModel
+
+
+@pytest.fixture
+def mock_recipe():
+    return RecipeModel(
+        title="Bolo",
+        ingredients=[Ingredient(name="farinha", quantity="2", unit="xícaras")],
+        steps=["Passo 1"],
+        extraction_confidence=0.9,
+        source_url="https://instagram.com/p/ABC/",
+        source_type="instagram",
+    )
+
+
+@pytest.mark.asyncio
+async def test_instagram_agent_uses_text_when_caption_present(mock_recipe):
+    agent = InstagramAgent()
+    url = "https://www.instagram.com/p/ABC123/"
+    extracted = {
+        "text": "Bolo delicioso! Ingredientes: 2 xícaras de farinha, açúcar e ovos...",
+        "images": [],
+    }
+
+    with patch.object(agent.extractor, "extract", return_value=extracted):
+        with patch("src.agents.instagram.extract_recipe_from_text", return_value=mock_recipe) as mock_fn:
+            result = await agent.extract(url)
+
+    mock_fn.assert_called_once()
+    assert result.source_type == "instagram"
+
+
+@pytest.mark.asyncio
+async def test_instagram_agent_uses_vision_when_images_present(mock_recipe):
+    agent = InstagramAgent()
+    url = "https://www.instagram.com/p/ABC123/"
+    extracted = {"text": "Yummy!", "images": [b"fake_image_bytes"]}
+
+    with patch.object(agent.extractor, "extract", return_value=extracted):
+        with patch("src.agents.instagram.extract_recipe_from_images", return_value=mock_recipe) as mock_fn:
+            result = await agent.extract(url)
+
+    mock_fn.assert_called_once()
+    assert result.source_type == "instagram"
