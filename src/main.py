@@ -5,6 +5,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from src.agents.base import BaseAgent
 from src.agents.instagram import InstagramAgent
 from src.agents.web import WebAgent
 from src.agents.youtube import YouTubeAgent
@@ -14,22 +15,16 @@ from src.router import UnsupportedSourceError, detect_source
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-_AGENTS = {
-    "youtube": YouTubeAgent,
-    "instagram": InstagramAgent,
-    "web": WebAgent,
-}
-
 
 async def run(url: str) -> RecipeModel:
     source = detect_source(url)
-    logger.info(f"Fonte detectada: {source} — {url}")
-    agent_class = {
+    logger.info(f"Fonte detectada: {source}")
+    agents: dict[str, type[BaseAgent]] = {
         "youtube": YouTubeAgent,
         "instagram": InstagramAgent,
         "web": WebAgent,
-    }[source]
-    agent = agent_class()
+    }
+    agent = agents[source]()
     return await agent.extract(url)
 
 

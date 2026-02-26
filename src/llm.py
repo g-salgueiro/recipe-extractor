@@ -41,7 +41,15 @@ def create_recipe_agent() -> Agent:
     )
 
 
-_agent = create_recipe_agent()
+# Lazy singleton: avoids startup failure if API key is missing at import time
+_agent: Agent | None = None
+
+
+def _get_agent() -> Agent:
+    global _agent
+    if _agent is None:
+        _agent = create_recipe_agent()
+    return _agent
 
 
 def extract_recipe_from_text(
@@ -50,7 +58,7 @@ def extract_recipe_from_text(
     source_type: str,
 ) -> RecipeModel:
     truncated = text[:_MAX_TEXT_LENGTH]
-    result = _agent.run_sync(f"Extraia a receita do seguinte conteúdo:\n\n{truncated}")
+    result = _get_agent().run_sync(f"Extraia a receita do seguinte conteúdo:\n\n{truncated}")
     content = result.data
     return RecipeModel(
         **content.model_dump(),
@@ -68,7 +76,7 @@ def extract_recipe_from_images(
     parts: list = [f"Caption do post: {caption}\n\nExtraia a receita das imagens abaixo:"]
     for img_bytes in images:
         parts.append(BinaryContent(data=img_bytes, media_type="image/jpeg"))
-    result = _agent.run_sync(parts)
+    result = _get_agent().run_sync(parts)
     content = result.data
     return RecipeModel(
         **content.model_dump(),
