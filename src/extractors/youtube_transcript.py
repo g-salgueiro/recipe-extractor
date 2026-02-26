@@ -47,7 +47,7 @@ class YouTubeExtractor:
         # Strategy 2: Video description
         try:
             desc = await asyncio.to_thread(self._get_description, url)
-            if desc and len(desc.strip()) > 50:
+            if desc and len(desc.strip()) > 100:
                 logger.info("YouTube: extraído via descrição do vídeo")
                 return desc
         except Exception as e:

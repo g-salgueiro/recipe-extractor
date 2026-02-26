@@ -53,7 +53,7 @@ async def test_extract_text_falls_back_to_description():
         with patch.object(
             extractor,
             "_get_description",
-            return_value="Receita de bolo: ingredientes e modo de preparo detalhado aqui...",
+            return_value="Receita de bolo de chocolate: ingredientes incluem 2 xícaras de farinha de trigo, 1 xícara de açúcar e 3 ovos.",
         ):
             text = await extractor.extract_text("https://www.youtube.com/watch?v=abc123")
 
