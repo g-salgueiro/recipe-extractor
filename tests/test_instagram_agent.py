@@ -31,7 +31,11 @@ async def test_instagram_agent_uses_text_when_caption_present(mock_recipe):
         with patch("src.agents.instagram.extract_recipe_from_text", return_value=mock_recipe) as mock_fn:
             result = await agent.extract(url)
 
-    mock_fn.assert_called_once()
+    mock_fn.assert_called_once_with(
+        text=extracted["text"],
+        source_url=url,
+        source_type="instagram",
+    )
     assert result.source_type == "instagram"
 
 
@@ -45,5 +49,10 @@ async def test_instagram_agent_uses_vision_when_images_present(mock_recipe):
         with patch("src.agents.instagram.extract_recipe_from_images", return_value=mock_recipe) as mock_fn:
             result = await agent.extract(url)
 
-    mock_fn.assert_called_once()
+    mock_fn.assert_called_once_with(
+        images=extracted["images"],
+        caption=extracted["text"],
+        source_url=url,
+        source_type="instagram",
+    )
     assert result.source_type == "instagram"
