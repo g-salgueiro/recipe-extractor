@@ -1,4 +1,16 @@
 # src/llm.py
+"""
+Camada de integração com o LLM via Pydantic AI + OpenRouter.
+
+Responsabilidades:
+- Criar e gerenciar o agente Pydantic AI (lazy singleton para evitar falha
+  na importação quando a API key ainda não está configurada)
+- Expor `extract_recipe_from_text` e `extract_recipe_from_images`, que recebem
+  conteúdo bruto e devolvem `list[RecipeModel]`
+- Suportar múltiplas receitas por extração: o output type do agente é
+  `RecipeCollection`, e cada elemento é promovido a `RecipeModel` com os
+  metadados da fonte
+"""
 import os
 
 from dotenv import load_dotenv
@@ -6,26 +18,33 @@ from pydantic_ai import Agent, BinaryContent
 from pydantic_ai.models.openai import OpenAIChatModel as OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
-from src.models.recipe import RecipeContent, RecipeModel
+from src.models.recipe import RecipeCollection, RecipeContent, RecipeModel
 
 load_dotenv()
 
 _SYSTEM_PROMPT = """Você é um especialista em extração de receitas culinárias.
-Dado um texto (ou imagem) de uma receita, extraia todas as informações e retorne em formato estruturado.
+Dado um texto (ou imagem), extraia TODAS as receitas presentes e retorne em formato estruturado.
 
 Regras:
-- Extraia TODOS os ingredientes com quantidades e unidades exatas
-- Extraia as instruções passo a passo
-- Coloque dicas, variações e observações do chef em "tips"
+- O conteúdo pode conter UMA ou MÚLTIPLAS receitas — extraia todas sem exceção
+- Para cada receita, extraia TODOS os ingredientes com quantidades e unidades exatas
+- Extraia as instruções passo a passo de cada receita
+- Coloque dicas, variações e observações do chef em "tips" da receita correspondente
 - Se uma informação estiver ausente, use null
-- Defina extraction_confidence entre 0.0 e 1.0 indicando a clareza da receita
-- Se não encontrar receita, use extraction_confidence=0.0 e listas vazias
+- Defina extraction_confidence entre 0.0 e 1.0 indicando a clareza de cada receita
+- Se não encontrar nenhuma receita, retorne uma lista vazia em "recipes"
 - Responda sempre em português"""
 
 _MAX_TEXT_LENGTH = 12_000  # ~3k tokens
 
 
 def create_recipe_agent() -> Agent:
+    """Instancia o agente Pydantic AI apontando para o OpenRouter.
+
+    O modelo e a API key são lidos de variáveis de ambiente para evitar
+    valores hard-coded. O output_type `RecipeCollection` força o LLM a
+    sempre retornar uma lista estruturada de receitas.
+    """
     provider = OpenAIProvider(
         base_url="https://openrouter.ai/api/v1",
         api_key=os.getenv("OPENROUTER_API_KEY", ""),
@@ -36,12 +55,13 @@ def create_recipe_agent() -> Agent:
     )
     return Agent(
         model=model,
-        output_type=RecipeContent,
+        output_type=RecipeCollection,
         system_prompt=_SYSTEM_PROMPT,
     )
 
 
-# Lazy singleton: avoids startup failure if API key is missing at import time
+# Lazy singleton: criado apenas na primeira chamada, evitando falha de
+# importação quando OPENROUTER_API_KEY ainda não está no ambiente.
 _agent: Agent | None = None
 
 
@@ -52,34 +72,46 @@ def _get_agent() -> Agent:
     return _agent
 
 
-def extract_recipe_from_text(
+def _to_recipe_models(
+    collection: RecipeCollection,
+    source_url: str,
+    source_type: str,
+) -> list[RecipeModel]:
+    """Converte `RecipeCollection` em `list[RecipeModel]` injetando os metadados da fonte."""
+    return [
+        RecipeModel(**content.model_dump(), source_url=source_url, source_type=source_type)
+        for content in collection.recipes
+    ]
+
+
+async def extract_recipe_from_text(
     text: str,
     source_url: str,
     source_type: str,
-) -> RecipeModel:
+) -> list[RecipeModel]:
+    """Extrai todas as receitas de um texto.
+
+    O texto é truncado em `_MAX_TEXT_LENGTH` antes de ser enviado ao LLM
+    para manter o custo de tokens sob controle.
+    """
     truncated = text[:_MAX_TEXT_LENGTH]
-    result = _get_agent().run_sync(f"Extraia a receita do seguinte conteúdo:\n\n{truncated}")
-    content = result.data
-    return RecipeModel(
-        **content.model_dump(),
-        source_url=source_url,
-        source_type=source_type,
-    )
+    result = await _get_agent().run(f"Extraia as receitas do seguinte conteúdo:\n\n{truncated}")
+    return _to_recipe_models(result.output, source_url, source_type)
 
 
-def extract_recipe_from_images(
+async def extract_recipe_from_images(
     images: list[bytes],
     caption: str,
     source_url: str,
     source_type: str,
-) -> RecipeModel:
-    parts: list = [f"Caption do post: {caption}\n\nExtraia a receita das imagens abaixo:"]
+) -> list[RecipeModel]:
+    """Extrai todas as receitas de uma lista de imagens, usando a caption como contexto.
+
+    Cada imagem é enviada como `BinaryContent` junto com a caption do post,
+    aproveitando a capacidade de visão do modelo.
+    """
+    parts: list = [f"Caption do post: {caption}\n\nExtraia as receitas das imagens abaixo:"]
     for img_bytes in images:
         parts.append(BinaryContent(data=img_bytes, media_type="image/jpeg"))
-    result = _get_agent().run_sync(parts)
-    content = result.data
-    return RecipeModel(
-        **content.model_dump(),
-        source_url=source_url,
-        source_type=source_type,
-    )
+    result = await _get_agent().run(parts)
+    return _to_recipe_models(result.output, source_url, source_type)

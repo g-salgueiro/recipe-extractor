@@ -1,4 +1,13 @@
 # src/models/recipe.py
+"""
+Modelos Pydantic que representam o domínio de receitas culinárias.
+
+Hierarquia:
+  Ingredient          — um ingrediente com quantidade, unidade e nome
+  RecipeContent       — campos extraídos pelo LLM para uma receita individual
+  RecipeCollection    — wrapper retornado pelo LLM (pode conter 1..N receitas)
+  RecipeModel         — RecipeContent + metadados da fonte (URL, tipo, timestamp)
+"""
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -6,6 +15,7 @@ from pydantic import BaseModel, Field
 
 
 class Ingredient(BaseModel):
+    """Um ingrediente individual com quantidade e unidade opcionais."""
     quantity: str | None = None
     unit: str | None = None
     name: str
@@ -13,7 +23,11 @@ class Ingredient(BaseModel):
 
 
 class RecipeContent(BaseModel):
-    """Fields extracted by the LLM."""
+    """Campos extraídos pelo LLM para uma única receita.
+
+    É o schema que o agente LLM deve preencher. Usado como elemento
+    de `RecipeCollection.recipes` antes de ser promovido a `RecipeModel`.
+    """
     title: str
     servings: str | None = None
     prep_time: str | None = None
@@ -24,8 +38,18 @@ class RecipeContent(BaseModel):
     extraction_confidence: float = Field(ge=0.0, le=1.0)
 
 
+class RecipeCollection(BaseModel):
+    """Container retornado pelo LLM.
+
+    Um único conteúdo (vídeo, post, página) pode conter múltiplas receitas.
+    O LLM sempre retorna este wrapper; o código downstream converte cada
+    elemento em `RecipeModel` com os metadados da fonte.
+    """
+    recipes: list[RecipeContent]
+
+
 class RecipeModel(RecipeContent):
-    """Full model with source metadata."""
+    """Receita completa com metadados da fonte — é o objeto persistido em disco."""
     source_url: str
     source_type: Literal["youtube", "instagram", "web"]
     extracted_at: datetime = Field(
@@ -33,6 +57,7 @@ class RecipeModel(RecipeContent):
     )
 
     def to_markdown(self) -> str:
+        """Renderiza a receita em Markdown legível."""
         lines = [
             f"# {self.title}",
             "",

@@ -1,4 +1,10 @@
 # tests/test_router.py
+"""Testes unitários do roteador de URLs.
+
+Verifica que `detect_source` identifica corretamente YouTube (watch, youtu.be,
+shorts), Instagram (post e reel), Web (http/https genérico) e levanta
+`UnsupportedSourceError` para URLs inválidas.
+"""
 import pytest
 from src.router import detect_source, UnsupportedSourceError
 

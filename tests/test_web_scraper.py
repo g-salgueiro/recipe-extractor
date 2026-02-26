@@ -1,4 +1,10 @@
 # tests/test_web_scraper.py
+"""Testes unitários do WebScraper.
+
+Verifica o caminho httpx (sucesso), o fallback para Playwright quando httpx
+falha com exceção, e o fallback quando o conteúdo retornado é muito curto.
+Playwright é mockado para evitar a inicialização de um browser real.
+"""
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 

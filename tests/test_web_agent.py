@@ -1,4 +1,9 @@
 # tests/test_web_agent.py
+"""Testes unitários do WebAgent.
+
+Usa AsyncMock para simular `scraper.scrape` e `extract_recipe_from_text`.
+Verifica retorno de lista e propagação correta de source_url/source_type.
+"""
 import pytest
 from unittest.mock import AsyncMock, patch
 
@@ -24,11 +29,11 @@ async def test_web_agent_extract_returns_recipe(mock_recipe):
     url = "https://example.com/receita"
 
     with patch.object(agent.scraper, "scrape", new_callable=AsyncMock, return_value="Texto da receita..."):
-        with patch("src.agents.web.extract_recipe_from_text", return_value=mock_recipe):
+        with patch("src.agents.web.extract_recipe_from_text", new_callable=AsyncMock, return_value=[mock_recipe]):
             result = await agent.extract(url)
 
-    assert isinstance(result, RecipeModel)
-    assert result.source_type == "web"
+    assert isinstance(result, list)
+    assert result[0].source_type == "web"
 
 
 @pytest.mark.asyncio
@@ -37,7 +42,7 @@ async def test_web_agent_passes_correct_args(mock_recipe):
     url = "https://example.com/receita"
 
     with patch.object(agent.scraper, "scrape", new_callable=AsyncMock, return_value="texto"):
-        with patch("src.agents.web.extract_recipe_from_text", return_value=mock_recipe) as mock_fn:
+        with patch("src.agents.web.extract_recipe_from_text", new_callable=AsyncMock, return_value=[mock_recipe]) as mock_fn:
             await agent.extract(url)
 
     _, kwargs = mock_fn.call_args

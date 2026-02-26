@@ -1,6 +1,15 @@
 # tests/test_instagram_agent.py
+"""Testes unitários do InstagramAgent.
+
+Verifica as duas rotas LLM:
+- caption presente (texto longo) → `extract_recipe_from_text`
+- imagens presentes (caption curta / foto) → `extract_recipe_from_images`
+
+O `InstagramExtractor.extract` é mockado para retornar dicts controlados,
+isolando o agente de chamadas reais ao Instagram ou ao LLM.
+"""
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock
 
 from src.agents.instagram import InstagramAgent
 from src.models.recipe import Ingredient, RecipeModel
@@ -28,7 +37,7 @@ async def test_instagram_agent_uses_text_when_caption_present(mock_recipe):
     }
 
     with patch.object(agent.extractor, "extract", return_value=extracted):
-        with patch("src.agents.instagram.extract_recipe_from_text", return_value=mock_recipe) as mock_fn:
+        with patch("src.agents.instagram.extract_recipe_from_text", new_callable=AsyncMock, return_value=[mock_recipe]) as mock_fn:
             result = await agent.extract(url)
 
     mock_fn.assert_called_once_with(
@@ -36,7 +45,7 @@ async def test_instagram_agent_uses_text_when_caption_present(mock_recipe):
         source_url=url,
         source_type="instagram",
     )
-    assert result.source_type == "instagram"
+    assert result[0].source_type == "instagram"
 
 
 @pytest.mark.asyncio
@@ -46,7 +55,7 @@ async def test_instagram_agent_uses_vision_when_images_present(mock_recipe):
     extracted = {"text": "Yummy!", "images": [b"fake_image_bytes"]}
 
     with patch.object(agent.extractor, "extract", return_value=extracted):
-        with patch("src.agents.instagram.extract_recipe_from_images", return_value=mock_recipe) as mock_fn:
+        with patch("src.agents.instagram.extract_recipe_from_images", new_callable=AsyncMock, return_value=[mock_recipe]) as mock_fn:
             result = await agent.extract(url)
 
     mock_fn.assert_called_once_with(
@@ -55,4 +64,4 @@ async def test_instagram_agent_uses_vision_when_images_present(mock_recipe):
         source_url=url,
         source_type="instagram",
     )
-    assert result.source_type == "instagram"
+    assert result[0].source_type == "instagram"

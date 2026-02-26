@@ -1,4 +1,10 @@
 # tests/test_main.py
+"""Testes unitários do entrypoint CLI (run e save_outputs).
+
+Verifica que `run()` roteia para o agente correto por tipo de URL, e que
+`save_outputs()` persiste um par JSON+Markdown por receita, com sufixo
+numérico quando há múltiplas receitas.
+"""
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,8 +30,8 @@ def mock_recipe():
     )
 
 
-def test_save_outputs_creates_json_and_markdown(tmp_path, mock_recipe):
-    save_outputs(mock_recipe, output_dir=tmp_path)
+def test_save_outputs_creates_json_and_markdown_for_single_recipe(tmp_path, mock_recipe):
+    save_outputs([mock_recipe], output_dir=tmp_path)
 
     json_files = list(tmp_path.glob("*.json"))
     md_files = list(tmp_path.glob("*.md"))
@@ -42,15 +48,29 @@ def test_save_outputs_creates_json_and_markdown(tmp_path, mock_recipe):
     assert "farinha" in md_content
 
 
+def test_save_outputs_creates_separate_files_for_multiple_recipes(tmp_path, mock_recipe):
+    recipe2 = mock_recipe.model_copy(update={"title": "Pão de Queijo"})
+    save_outputs([mock_recipe, recipe2], output_dir=tmp_path)
+
+    json_files = sorted(tmp_path.glob("*.json"))
+    md_files = sorted(tmp_path.glob("*.md"))
+
+    assert len(json_files) == 2
+    assert len(md_files) == 2
+
+    titles = {json.loads(f.read_text())["title"] for f in json_files}
+    assert titles == {"Bolo de Chocolate", "Pão de Queijo"}
+
+
 @pytest.mark.asyncio
 async def test_run_dispatches_to_youtube_agent(mock_recipe):
     url = "https://www.youtube.com/watch?v=abc123"
     with patch("src.main.YouTubeAgent") as MockAgent:
         instance = MockAgent.return_value
-        instance.extract = AsyncMock(return_value=mock_recipe)
+        instance.extract = AsyncMock(return_value=[mock_recipe])
         result = await run(url)
 
-    assert result.title == "Bolo de Chocolate"
+    assert result[0].title == "Bolo de Chocolate"
     MockAgent.assert_called_once()
 
 
@@ -59,9 +79,10 @@ async def test_run_dispatches_to_instagram_agent(mock_recipe):
     url = "https://www.instagram.com/p/ABC123/"
     with patch("src.main.InstagramAgent") as MockAgent:
         instance = MockAgent.return_value
-        instance.extract = AsyncMock(return_value=mock_recipe)
+        instance.extract = AsyncMock(return_value=[mock_recipe])
         result = await run(url)
 
+    assert result[0].title == "Bolo de Chocolate"
     MockAgent.assert_called_once()
 
 
@@ -70,9 +91,10 @@ async def test_run_dispatches_to_web_agent(mock_recipe):
     url = "https://www.tudogostoso.com.br/receita/1"
     with patch("src.main.WebAgent") as MockAgent:
         instance = MockAgent.return_value
-        instance.extract = AsyncMock(return_value=mock_recipe)
+        instance.extract = AsyncMock(return_value=[mock_recipe])
         result = await run(url)
 
+    assert result[0].title == "Bolo de Chocolate"
     MockAgent.assert_called_once()
 
 

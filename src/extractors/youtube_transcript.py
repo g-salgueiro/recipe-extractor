@@ -1,4 +1,18 @@
 # src/extractors/youtube_transcript.py
+"""
+Extrator de texto para vídeos do YouTube com três estratégias em cascata:
+
+1. **YouTube Transcript API** — obtém legendas (automáticas ou manuais) sem
+   baixar o vídeo. Preferência por pt → en.
+
+2. **Descrição do vídeo** — via yt-dlp com `skip_download=True`. Útil quando
+   o criador publica a receita completa na descrição. Só é usado se a descrição
+   tiver > 100 chars (threshold para descartar descrições genéricas).
+
+3. **Whisper** — baixa o áudio com yt-dlp e transcreve localmente. Fallback
+   mais lento mas que funciona para qualquer vídeo sem legenda/descrição.
+   O modelo Whisper é carregado em lazy singleton para reutilização.
+"""
 import asyncio
 import logging
 import os
@@ -12,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 def extract_video_id(url: str) -> str:
+    """Extrai o ID do vídeo de URLs do YouTube (watch, youtu.be, shorts)."""
     patterns = [
         r"youtube\.com/watch\?.*v=([\w-]+)",
         r"youtu\.be/([\w-]+)",
@@ -30,9 +45,10 @@ class YouTubeExtractor:
         self._whisper_model = None  # lazy load
 
     async def extract_text(self, url: str) -> str:
+        """Obtém o texto do vídeo usando a melhor estratégia disponível."""
         video_id = extract_video_id(url)
 
-        # Strategy 1: Transcript API
+        # Estratégia 1: API de legendas (mais rápida, sem download)
         try:
             api = YouTubeTranscriptApi()
             transcript = await asyncio.to_thread(
@@ -44,7 +60,7 @@ class YouTubeExtractor:
         except Exception as e:
             logger.warning(f"YouTube transcript API falhou: {e}")
 
-        # Strategy 2: Video description
+        # Estratégia 2: Descrição do vídeo (via yt-dlp, sem download)
         try:
             desc = await asyncio.to_thread(self._get_description, url)
             if desc and len(desc.strip()) > 100:
@@ -53,11 +69,12 @@ class YouTubeExtractor:
         except Exception as e:
             logger.warning(f"YouTube descrição falhou: {e}")
 
-        # Strategy 3: Whisper
+        # Estratégia 3: Transcrição Whisper (requer download do áudio)
         logger.info("YouTube: fallback para transcrição Whisper")
         return await self._whisper_transcribe(url)
 
     def _get_description(self, url: str) -> str:
+        """Obtém a descrição do vídeo sem baixá-lo."""
         import yt_dlp
 
         opts = {"quiet": True, "no_warnings": True, "skip_download": True}
@@ -66,6 +83,7 @@ class YouTubeExtractor:
             return info.get("description", "")
 
     async def _whisper_transcribe(self, url: str) -> str:
+        """Baixa o áudio e transcreve com Whisper."""
         import whisper
         import yt_dlp
 

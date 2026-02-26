@@ -1,4 +1,9 @@
 # tests/test_models.py
+"""Testes unitários dos modelos Pydantic (Ingredient, RecipeContent, RecipeModel).
+
+Verifica campos obrigatórios/opcionais, serialização JSON e a renderização
+em Markdown via `to_markdown()`.
+"""
 from datetime import datetime
 from src.models.recipe import Ingredient, RecipeContent, RecipeModel
 

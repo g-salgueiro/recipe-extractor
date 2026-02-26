@@ -1,4 +1,16 @@
 # src/extractors/web_scraper.py
+"""
+Scraper de páginas web com dois modos de operação:
+
+1. **httpx** — requisição HTTP direta. Funciona para a maioria dos sites de receitas
+   que servem HTML estático. Rápido e sem dependências pesadas.
+
+2. **Playwright** — fallback para sites com renderização JavaScript (SPAs). Usado
+   quando httpx retorna conteúdo vazio ou muito curto (< 200 chars).
+
+O HTML é limpo por `_html_to_text`: remove scripts, estilos, nav, footer e header,
+depois extrai o nó mais relevante (main > article > #content > .recipe > body).
+"""
 import logging
 
 import httpx
@@ -17,6 +29,7 @@ _HEADERS = {
 
 
 def _html_to_text(html: str) -> str:
+    """Extrai o texto principal do HTML, removendo elementos de navegação e boilerplate."""
     soup = BeautifulSoup(html, "lxml")
     for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
         tag.decompose()
@@ -32,6 +45,7 @@ def _html_to_text(html: str) -> str:
 
 class WebScraper:
     async def scrape(self, url: str) -> str:
+        """Retorna o texto da página, usando Playwright como fallback se necessário."""
         try:
             text = await self._scrape_httpx(url)
             if text and len(text.strip()) >= _MIN_CONTENT_LENGTH:
@@ -51,6 +65,7 @@ class WebScraper:
         return _html_to_text(response.text)
 
     async def _scrape_playwright(self, url: str) -> str:
+        """Renderiza a página com Chromium headless e extrai o texto resultante."""
         from playwright.async_api import async_playwright
 
         async with async_playwright() as p:

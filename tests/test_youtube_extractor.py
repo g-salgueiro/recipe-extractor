@@ -1,4 +1,10 @@
 # tests/test_youtube_extractor.py
+"""Testes unitários do YouTubeExtractor.
+
+Verifica `extract_video_id` para os três formatos de URL do YouTube, e as
+três estratégias de `extract_text`: API de legendas → descrição → Whisper.
+Cada estratégia é testada isoladamente mockando as anteriores para falhar.
+"""
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 
