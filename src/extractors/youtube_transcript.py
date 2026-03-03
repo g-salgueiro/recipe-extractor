@@ -1,17 +1,15 @@
 # src/extractors/youtube_transcript.py
 """
-Extrator de texto para vídeos do YouTube com três estratégias em cascata:
+Extrator de texto para vídeos do YouTube com coleta de múltiplas fontes:
 
-1. **YouTube Transcript API** — obtém legendas (automáticas ou manuais) sem
-   baixar o vídeo. Preferência por pt → en.
+- **Metadata** (título + descrição) — via yt-dlp com `skip_download=True`.
+- **Legenda** — YouTube Transcript API, preferência pt → en.
+- **Whisper** — fallback: baixa áudio e transcreve localmente. Só acionado
+  quando não há legenda NEM descrição útil.
 
-2. **Descrição do vídeo** — via yt-dlp com `skip_download=True`. Útil quando
-   o criador publica a receita completa na descrição. Só é usado se a descrição
-   tiver > 100 chars (threshold para descartar descrições genéricas).
-
-3. **Whisper** — baixa o áudio com yt-dlp e transcreve localmente. Fallback
-   mais lento mas que funciona para qualquer vídeo sem legenda/descrição.
-   O modelo Whisper é carregado em lazy singleton para reutilização.
+O método `extract_sources()` coleta TODAS as fontes disponíveis e retorna
+um `dict[str, str]`. O método legado `extract_text()` delega para
+`extract_sources()` e concatena os valores.
 """
 import asyncio
 import logging
@@ -44,43 +42,52 @@ class YouTubeExtractor:
         self.whisper_model_size = whisper_model_size or os.getenv("WHISPER_MODEL_SIZE", "base")
         self._whisper_model = None  # lazy load
 
-    async def extract_text(self, url: str) -> str:
-        """Obtém o texto do vídeo usando a melhor estratégia disponível."""
+    async def extract_sources(self, url: str) -> dict[str, str]:
+        """Coleta todas as fontes disponíveis para o vídeo."""
         video_id = extract_video_id(url)
+        sources: dict[str, str] = {}
 
-        # Estratégia 1: API de legendas (mais rápida, sem download)
+        # Metadata (título + descrição) via yt-dlp
+        try:
+            title, description = await asyncio.to_thread(self._get_metadata, url)
+            if title:
+                sources["titulo"] = title
+            if description and len(description.strip()) > 100:
+                sources["descricao"] = description
+        except Exception as e:
+            logger.warning(f"YouTube metadata falhou: {e}")
+
+        # Legenda via Transcript API
         try:
             api = YouTubeTranscriptApi()
             transcript = await asyncio.to_thread(
                 api.fetch, video_id, languages=["pt", "en"]
             )
-            text = " ".join(snippet.text for snippet in transcript)
-            logger.info("YouTube: extraído via API de legendas")
-            return text
+            sources["legenda"] = " ".join(snippet.text for snippet in transcript)
+            logger.info("YouTube: legenda extraída via API")
         except Exception as e:
             logger.warning(f"YouTube transcript API falhou: {e}")
 
-        # Estratégia 2: Descrição do vídeo (via yt-dlp, sem download)
-        try:
-            desc = await asyncio.to_thread(self._get_description, url)
-            if desc and len(desc.strip()) > 100:
-                logger.info("YouTube: extraído via descrição do vídeo")
-                return desc
-        except Exception as e:
-            logger.warning(f"YouTube descrição falhou: {e}")
+        # Whisper: último recurso, só se não tem legenda NEM descrição
+        if "legenda" not in sources and "descricao" not in sources:
+            logger.info("YouTube: fallback para Whisper")
+            sources["transcricao_whisper"] = await self._whisper_transcribe(url)
 
-        # Estratégia 3: Transcrição Whisper (requer download do áudio)
-        logger.info("YouTube: fallback para transcrição Whisper")
-        return await self._whisper_transcribe(url)
+        return sources
 
-    def _get_description(self, url: str) -> str:
-        """Obtém a descrição do vídeo sem baixá-lo."""
+    async def extract_text(self, url: str) -> str:
+        """Wrapper legado: coleta fontes e retorna como texto único."""
+        sources = await self.extract_sources(url)
+        return "\n\n".join(sources.values())
+
+    def _get_metadata(self, url: str) -> tuple[str, str]:
+        """Obtém título e descrição do vídeo via yt-dlp sem download."""
         import yt_dlp
 
         opts = {"quiet": True, "no_warnings": True, "skip_download": True}
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            return info.get("description", "")
+            return info.get("title", ""), info.get("description", "")
 
     async def _whisper_transcribe(self, url: str) -> str:
         """Baixa o áudio e transcreve com Whisper."""
