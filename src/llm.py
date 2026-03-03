@@ -30,7 +30,7 @@ Regras:
 - O conteúdo pode conter UMA ou MÚLTIPLAS receitas — extraia todas sem exceção
 - Para cada receita, extraia TODOS os ingredientes com quantidades e unidades exatas
 - Extraia as instruções passo a passo de cada receita
-- Coloque dicas, variações e observações do chef em "tips" da receita correspondente. Dicas incluem técnicas de preparo de ingredientes (como desossar, limpar, cortar), substituições possíveis, e observações sobre tempo/temperatura.
+- Coloque dicas, variações e observações do chef em "tips" da receita correspondente. IMPORTANTE: capture TODAS as técnicas de preparo de ingredientes mencionadas (como desossar frango, limpar carne, cortar legumes, remover pele, tirar excesso de gordura) — mesmo que pareçam instruções gerais e não específicas de uma receita. Também capture substituições possíveis e observações sobre tempo/temperatura.
 - Se uma informação estiver ausente, use null
 - Defina extraction_confidence entre 0.0 e 1.0 indicando a clareza de cada receita
 - Se não encontrar nenhuma receita, retorne uma lista vazia em "recipes"
