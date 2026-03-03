@@ -5,10 +5,12 @@ Verifica o caminho httpx (sucesso), o fallback para Playwright quando httpx
 falha com exceção, e o fallback quando o conteúdo retornado é muito curto.
 Playwright é mockado para evitar a inicialização de um browser real.
 """
+import json
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.extractors.web_scraper import WebScraper
+from src.extractors.web_scraper import WebScraper, _extract_json_ld_recipe
 
 SAMPLE_HTML = """
 <html>
@@ -75,3 +77,62 @@ async def test_scrape_falls_back_to_playwright_when_content_too_short():
             text = await scraper.scrape("https://example.com/receita")
 
     assert "ingredientes" in text
+
+
+# --- JSON-LD and scrape_sources tests ---
+
+SAMPLE_HTML_WITH_JSONLD = """
+<html>
+<head>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Recipe",
+  "name": "Bolo de Chocolate",
+  "recipeIngredient": ["2 xícaras de farinha", "1 xícara de açúcar"],
+  "recipeInstructions": [{"text": "Misture tudo"}, {"text": "Asse por 40 min"}]
+}
+</script>
+</head>
+<body><main><p>Receita de bolo com ingredientes e modo de preparo detalhado para que o texto tenha mais de duzentos caracteres e passe do threshold de conteúdo mínimo exigido pelo scraper. Misture farinha, açúcar e cacau. Asse por quarenta minutos.</p></main></body>
+</html>
+"""
+
+
+def test_extract_json_ld_recipe_found():
+    result = _extract_json_ld_recipe(SAMPLE_HTML_WITH_JSONLD)
+    assert result is not None
+    data = json.loads(result)
+    assert data["@type"] == "Recipe"
+    assert data["name"] == "Bolo de Chocolate"
+
+
+def test_extract_json_ld_recipe_not_found():
+    result = _extract_json_ld_recipe(SAMPLE_HTML)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_scrape_sources_returns_dict_with_jsonld():
+    scraper = WebScraper()
+
+    with patch.object(
+        scraper, "_fetch_html", new_callable=AsyncMock, return_value=SAMPLE_HTML_WITH_JSONLD
+    ):
+        sources = await scraper.scrape_sources("https://example.com/receita")
+
+    assert "conteudo_pagina" in sources
+    assert "json_ld_recipe" in sources
+
+
+@pytest.mark.asyncio
+async def test_scrape_sources_no_jsonld():
+    scraper = WebScraper()
+
+    with patch.object(
+        scraper, "_fetch_html", new_callable=AsyncMock, return_value=SAMPLE_HTML
+    ):
+        sources = await scraper.scrape_sources("https://example.com/receita")
+
+    assert "conteudo_pagina" in sources
+    assert "json_ld_recipe" not in sources
