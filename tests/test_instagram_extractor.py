@@ -35,9 +35,10 @@ def test_extract_returns_caption_when_present():
     mock_post.is_video = False
 
     with patch("src.extractors.instagram_loader.instaloader.Post.from_shortcode", return_value=mock_post):
-        result = extractor.extract("https://www.instagram.com/p/ABC123/")
+        with patch("src.extractors.instagram_loader._fetch_og_description", return_value=""):
+            result = extractor.extract("https://www.instagram.com/p/ABC123/")
 
-    assert result["text"] == mock_post.caption
+    assert result["sources"]["caption"] == mock_post.caption
     assert result["images"] == []
 
 
@@ -50,11 +51,13 @@ def test_extract_fetches_images_when_caption_short():
     fake_image_bytes = b"fake_jpeg_bytes"
 
     with patch("src.extractors.instagram_loader.instaloader.Post.from_shortcode", return_value=mock_post):
-        with patch.object(extractor, "_download_images", return_value=[fake_image_bytes]):
-            result = extractor.extract("https://www.instagram.com/p/ABC123/")
+        with patch("src.extractors.instagram_loader._fetch_og_description", return_value=""):
+            with patch.object(extractor, "_download_images", return_value=[fake_image_bytes]):
+                result = extractor.extract("https://www.instagram.com/p/ABC123/")
 
     assert len(result["images"]) == 1
     assert result["images"][0] == fake_image_bytes
+    assert result["sources"]["caption"] == "Receita"
 
 
 def test_extract_transcribes_video_when_post_is_video():
@@ -64,11 +67,12 @@ def test_extract_transcribes_video_when_post_is_video():
     mock_post.is_video = True
 
     with patch("src.extractors.instagram_loader.instaloader.Post.from_shortcode", return_value=mock_post):
-        with patch.object(extractor, "_transcribe_video", return_value="Add butter and cream to the pan..."):
-            result = extractor.extract("https://www.instagram.com/p/ABC123/")
+        with patch("src.extractors.instagram_loader._fetch_og_description", return_value=""):
+            with patch.object(extractor, "_transcribe_video", return_value="Add butter and cream to the pan..."):
+                result = extractor.extract("https://www.instagram.com/p/ABC123/")
 
-    assert "Steak Au Poivre recipe!" in result["text"]
-    assert "Add butter and cream to the pan..." in result["text"]
+    assert result["sources"]["caption"] == "Steak Au Poivre recipe!"
+    assert result["sources"]["transcricao_audio"] == "Add butter and cream to the pan..."
     assert result["images"] == []
 
 
@@ -81,8 +85,8 @@ def test_extract_falls_back_to_ytdlp_whisper_when_instaloader_fails():
             with patch.object(extractor, "_transcribe_video", return_value="Add flour and butter..."):
                 result = extractor.extract(url)
 
-    assert "Steak Au Poivre description." in result["text"]
-    assert "Add flour and butter..." in result["text"]
+    assert result["sources"]["og_description"] == "Steak Au Poivre description."
+    assert result["sources"]["transcricao_audio"] == "Add flour and butter..."
     assert result["images"] == []
 
 
@@ -95,5 +99,19 @@ def test_extract_falls_back_to_og_description_when_ytdlp_fails():
             with patch.object(extractor, "_transcribe_video", side_effect=Exception("no video")):
                 result = extractor.extract(url)
 
-    assert result["text"] == "Receita: misture tudo."
+    assert result["sources"]["og_description"] == "Receita: misture tudo."
     assert result["images"] == []
+
+
+def test_extract_includes_og_description_as_additional_source():
+    extractor = InstagramExtractor()
+    mock_post = MagicMock()
+    mock_post.caption = "Bolo de chocolate incrível! Ingredientes: 2 xícaras de farinha e modo de preparo."
+    mock_post.is_video = False
+
+    with patch("src.extractors.instagram_loader.instaloader.Post.from_shortcode", return_value=mock_post):
+        with patch("src.extractors.instagram_loader._fetch_og_description", return_value="OG: Receita completa de bolo"):
+            result = extractor.extract("https://www.instagram.com/p/ABC123/")
+
+    assert "caption" in result["sources"]
+    assert "og_description" in result["sources"]

@@ -86,45 +86,51 @@ class InstagramExtractor:
                 logger.warning(f"Instagram login falhou: {e}")
 
     def extract(self, url: str) -> dict:
-        """Retorna {'text': str, 'images': list[bytes]} com o melhor conteúdo disponível."""
+        """Retorna {'sources': dict[str, str], 'images': list[bytes]}."""
+        sources: dict[str, str] = {}
+        images: list[bytes] = []
+
+        # Sempre tentar og:description como fonte adicional
+        og_desc = _fetch_og_description(url)
+        if og_desc:
+            sources["og_description"] = og_desc
+
         try:
-            return self._extract_via_instaloader(url)
+            insta_result = self._extract_via_instaloader(url)
+            sources.update(insta_result["sources"])
+            images = insta_result["images"]
         except Exception as e:
             logger.warning(f"instaloader falhou ({e}), tentando fallbacks")
+            # Se instaloader falhou e pode ser vídeo, tenta yt-dlp + Whisper
+            try:
+                logger.info("Instagram: tentando yt-dlp + Whisper para transcrição de vídeo")
+                transcription = self._transcribe_video(url)
+                sources["transcricao_audio"] = transcription
+            except Exception as e2:
+                logger.warning(f"yt-dlp + Whisper falhou: {e2}")
 
-        caption = _fetch_og_description(url)
-
-        try:
-            logger.info("Instagram: tentando yt-dlp + Whisper para transcrição de vídeo")
-            transcription = self._transcribe_video(url)
-            combined = "\n\n".join(filter(None, [caption, transcription]))
-            return {"text": combined, "images": []}
-        except Exception as e:
-            logger.warning(f"yt-dlp + Whisper falhou: {e}")
-
-        return {"text": caption, "images": []}
+        return {"sources": sources, "images": images}
 
     def _extract_via_instaloader(self, url: str) -> dict:
-        """Extrai conteúdo usando instaloader.
-
-        - Vídeo: transcreve o áudio (a receita geralmente está no vídeo, não na legenda).
-        - Foto com caption curta: baixa imagens para análise por visão LLM.
-        - Foto com caption longa: retorna o texto diretamente.
-        """
+        """Extrai conteúdo usando instaloader."""
         shortcode = extract_shortcode(url)
         post = instaloader.Post.from_shortcode(self._loader.context, shortcode)
         caption = post.caption or ""
-        result: dict = {"text": caption, "images": []}
+        sources: dict[str, str] = {}
+        images: list[bytes] = []
+
+        if caption:
+            sources["caption"] = caption
 
         if post.is_video:
             logger.info("Instagram: post de vídeo, transcrevendo com yt-dlp + Whisper")
             transcription = self._transcribe_video(url)
-            result["text"] = "\n\n".join(filter(None, [caption, transcription]))
+            sources["transcricao_audio"] = transcription
         elif len(caption.strip()) < _CAPTION_MIN_LENGTH:
             logger.info("Instagram: caption curta, baixando imagens para visão")
-            result["images"] = self._download_images(post)
+            images = self._download_images(post)
 
-        return result
+        return {"sources": sources, "images": images}
 
     def _download_images(self, post) -> list[bytes]:
         """Baixa as imagens do post e retorna como lista de bytes."""
