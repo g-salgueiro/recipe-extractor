@@ -90,7 +90,7 @@ async def test_extract_recipe_from_text_truncates_long_input(mock_collection):
         await extract_recipe_from_text(long_text, "https://example.com", "web")
 
     call_args = mock_agent.run.call_args[0][0]
-    assert len(call_args) <= 12_500  # prompt + 12_000 chars max
+    assert len(call_args) <= 24_500  # prompt + 24_000 chars max
 
 
 @pytest.mark.asyncio
@@ -111,3 +111,13 @@ async def test_extract_recipe_from_images_returns_list(mock_collection):
     assert isinstance(recipes, list)
     assert len(recipes) == 1
     assert recipes[0].source_type == "instagram"
+
+
+def test_system_prompt_mentions_cross_referencing():
+    from src.llm import _SYSTEM_PROMPT
+    assert "múltiplas fontes" in _SYSTEM_PROMPT.lower()
+
+
+def test_system_prompt_mentions_techniques():
+    from src.llm import _SYSTEM_PROMPT
+    assert "técnica" in _SYSTEM_PROMPT.lower()

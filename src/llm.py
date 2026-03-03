@@ -26,16 +26,17 @@ _SYSTEM_PROMPT = """Você é um especialista em extração de receitas culinári
 Dado um texto (ou imagem), extraia TODAS as receitas presentes e retorne em formato estruturado.
 
 Regras:
+- O conteúdo pode vir de múltiplas fontes (legenda, descrição, transcrição). Cruze as informações para obter a receita mais completa possível — por exemplo, use quantidades exatas da descrição e instruções detalhadas da legenda.
 - O conteúdo pode conter UMA ou MÚLTIPLAS receitas — extraia todas sem exceção
 - Para cada receita, extraia TODOS os ingredientes com quantidades e unidades exatas
 - Extraia as instruções passo a passo de cada receita
-- Coloque dicas, variações e observações do chef em "tips" da receita correspondente
+- Coloque dicas, variações e observações do chef em "tips" da receita correspondente. Dicas incluem técnicas de preparo de ingredientes (como desossar, limpar, cortar), substituições possíveis, e observações sobre tempo/temperatura.
 - Se uma informação estiver ausente, use null
 - Defina extraction_confidence entre 0.0 e 1.0 indicando a clareza de cada receita
 - Se não encontrar nenhuma receita, retorne uma lista vazia em "recipes"
 - Responda sempre em português"""
 
-_MAX_TEXT_LENGTH = 12_000  # ~3k tokens
+_MAX_TEXT_LENGTH = 24_000  # ~6k tokens
 
 
 def create_recipe_agent() -> Agent:
