@@ -15,3 +15,14 @@ class BaseAgent(ABC):
     async def extract(self, url: str) -> list[RecipeModel]:
         """Extrai todas as receitas da URL fornecida."""
         ...
+
+
+def format_sources(sources: dict[str, str]) -> str:
+    """Formata fontes nomeadas como seções rotuladas para o LLM."""
+    if not sources:
+        return ""
+    sections = []
+    for label, content in sources.items():
+        readable = label.replace("_", " ").title()
+        sections.append(f"## {readable}\n{content}")
+    return "\n\n".join(sections)
