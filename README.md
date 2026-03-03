@@ -7,23 +7,25 @@ CLI que extrai receitas culinárias de vídeos do YouTube, posts do Instagram e 
 ```
 URL → SourceRouter → Agent (YouTube | Instagram | Web)
                          ↓
-                    Extractor (texto / imagens / áudio)
+                    Extractor → dict[str, str] (múltiplas fontes nomeadas)
                          ↓
-                    LLM (OpenRouter / gpt-4o)
+                    format_sources() → seções rotuladas "## Fonte\nconteúdo"
+                         ↓
+                    LLM (cruza fontes) → RecipeCollection
                          ↓
                   list[RecipeModel] → JSON + Markdown
 ```
 
-Cada fonte tem um agente especializado que decide como extrair o conteúdo antes de enviar ao LLM. O LLM retorna sempre uma **lista** de receitas — um único post pode conter múltiplas.
+Cada fonte tem um agente especializado que coleta **todas** as fontes disponíveis (não apenas a primeira) e as envia como seções rotuladas ao LLM, que cruza as informações para montar a receita mais completa possível. O LLM retorna sempre uma **lista** de receitas — um único post pode conter múltiplas.
 
-### Agentes e estratégias de extração
+### Fontes coletadas por extractor
 
-| Fonte | Estratégia primária | Fallback 1 | Fallback 2 |
-|---|---|---|---|
-| **YouTube** | API de legendas | Descrição do vídeo | Whisper (transcrição) |
-| **Instagram (foto)** | instaloader (caption) | Caption curta → visão LLM | og:description (sem auth) |
-| **Instagram (vídeo)** | instaloader → `is_video` → yt-dlp + Whisper | og:description + yt-dlp + Whisper | og:description |
-| **Web** | httpx + parse HTML | Playwright (JS rendering) | — |
+| Extractor | Fontes coletadas |
+|---|---|
+| **YouTube** | título + descrição (se > 100 chars) + legenda (Transcript API) + Whisper (só se sem legenda e sem descrição) |
+| **Instagram (foto)** | caption (instaloader) + og:description (sempre) + imagens (se caption curta → visão LLM) |
+| **Instagram (vídeo)** | caption + og:description + transcrição de áudio (yt-dlp + Whisper) |
+| **Web** | conteúdo da página (httpx → Playwright) + JSON-LD/schema.org Recipe (se disponível) |
 
 ## Instalação
 
@@ -77,7 +79,7 @@ Quando a fonte contém múltiplas receitas, são gerados arquivos numerados:
 pytest
 ```
 
-49 testes unitários, todos com mocks — sem chamadas reais à API ou rede.
+67 testes unitários, todos com mocks — sem chamadas reais à API ou rede.
 
 ## Estrutura do projeto
 
@@ -85,27 +87,28 @@ pytest
 src/
   models/recipe.py          # Pydantic models: Ingredient, RecipeContent, RecipeCollection, RecipeModel
   router.py                 # Detecção de fonte por URL (YouTube / Instagram / Web)
-  llm.py                    # Agente LLM: extração de texto e imagens, suporte a múltiplas receitas
+  llm.py                    # Agente LLM: extração de texto e imagens, cruzamento de fontes
   main.py                   # Entrypoint CLI
   agents/
-    base.py                 # Interface abstrata BaseAgent
+    base.py                 # Interface abstrata BaseAgent + format_sources()
     youtube.py              # YouTubeAgent
     instagram.py            # InstagramAgent
     web.py                  # WebAgent
   extractors/
-    youtube_transcript.py   # Extração de texto de vídeos YouTube (3 estratégias)
-    instagram_loader.py     # Extração de posts Instagram (caption / imagens / vídeo)
-    web_scraper.py          # Scraping web (httpx → Playwright)
+    youtube_transcript.py   # Multi-source: título + descrição + legenda + Whisper
+    instagram_loader.py     # Multi-source: caption + og:description + transcrição
+    web_scraper.py          # Multi-source: conteúdo HTML + JSON-LD/schema.org
 tests/
   test_models.py
   test_router.py
   test_llm.py
   test_main.py
+  test_format_sources.py
   test_youtube_agent.py / test_youtube_extractor.py
   test_instagram_agent.py / test_instagram_extractor.py
   test_web_agent.py / test_web_scraper.py
 docs/
-  plans/                    # Design doc e plano de implementação original
+  plans/                    # Design docs e planos de implementação
   known-issues.md           # Issues conhecidos e pendentes
 ```
 

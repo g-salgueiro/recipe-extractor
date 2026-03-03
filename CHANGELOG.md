@@ -1,5 +1,36 @@
 # Changelog
 
+## [Unreleased] — Multi-source merging (2026-03-03)
+
+Refatoração dos extractors para coletar **todas** as fontes disponíveis (não apenas a primeira) e enviá-las ao LLM como seções rotuladas, permitindo cruzamento de informações.
+
+### Adicionado
+
+- `format_sources()` em `src/agents/base.py` — formata `dict[str, str]` de fontes como seções rotuladas (`## Fonte\nconteúdo`) para o LLM
+- `YouTubeExtractor.extract_sources()` — coleta título + descrição + legenda simultaneamente (Whisper só como último recurso)
+- `YouTubeExtractor._get_metadata()` — obtém título e descrição via yt-dlp em uma única chamada
+- `WebScraper.scrape_sources()` — retorna conteúdo da página + JSON-LD/schema.org Recipe
+- `_extract_json_ld_recipe()` em `src/extractors/web_scraper.py` — extrai dados Recipe de `<script type="application/ld+json">`
+- 18 novos testes (total: 67)
+
+### Alterado
+
+- **YouTubeExtractor**: de cascata excludente (1ª fonte que funcionar) para coleta multi-source (`dict[str, str]`)
+- **InstagramExtractor**: `extract()` retorna `{"sources": dict[str, str], "images": list}` em vez de `{"text": str, "images": list}`; `og:description` agora é sempre buscado como fonte adicional (não apenas como fallback)
+- **Todos os agents** (YouTube, Instagram, Web): usam `format_sources()` para montar seções rotuladas antes de enviar ao LLM
+- **Prompt do LLM**:
+  - Instrui cruzamento de múltiplas fontes (ex: quantidades da descrição + instruções da legenda)
+  - Enfatiza captura de técnicas de preparo (desossar, limpar, cortar) e todas as dicas do chef
+  - Define formato de ingredientes: `[quantidade] de [nome] ([alternativa, forma de apresentação])`
+  - Instrui revisão gramatical (preposições e conectivos)
+- `_MAX_TEXT_LENGTH`: 12.000 → 24.000 chars (~6k tokens)
+
+### Removido
+
+- `YouTubeExtractor._get_description()` — substituído por `_get_metadata()`
+
+---
+
 ## [Unreleased] — Post-implementação (2026-02-26)
 
 Correções e melhorias realizadas durante smoke tests após a implementação inicial.
